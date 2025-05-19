@@ -1,7 +1,7 @@
 import networkx as nx
+import numpy as np
 import random
 import copy
-import numpy as np
 
 
 class GeneticAlgorithmBN:

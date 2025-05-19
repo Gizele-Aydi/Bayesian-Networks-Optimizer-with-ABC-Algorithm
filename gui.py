@@ -1,19 +1,18 @@
-import tkinter as tk
-from tkinter import ttk, messagebox
-import matplotlib
+from abc_algo import ABC_BN
+from utils import load_data, calculate_fitness
 
-matplotlib.use('TkAgg')
-import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.animation import FuncAnimation
-import numpy as np
-import networkx as nx
-import logging
-import time
+from tkinter import ttk, messagebox
 
-# Import algorithms
-from abc_algo import ABC_BN
-from utils import load_data, is_acyclic, exceeds_parent_limit, calculate_fitness
+import matplotlib.pyplot as plt
+import networkx as nx
+import tkinter as tk
+import matplotlib
+import logging
+
+
+matplotlib.use('TkAgg')
 
 # Default hyperparameters
 DEFAULT_SEED = 42

@@ -1,8 +1,9 @@
+from matplotlib.animation import FuncAnimation, PillowWriter
+from IPython.display import Image, display
+
 import matplotlib.pyplot as plt
 import networkx as nx
-from matplotlib.animation import FuncAnimation, PillowWriter
 
-from IPython.display import Image, display
 
 def animate_abc_and_bn(
     fitness_evolution,
