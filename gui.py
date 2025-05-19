@@ -646,8 +646,3 @@ def main():
     root = tk.Tk()
     app = BN_Explorer(root)
     return root
-
-
-if __name__ == "__main__":
-    root = main()
-    root.mainloop()

@@ -1,6 +1,6 @@
 import tkinter as tk
-#from gui import init_gui
+from gui import main
 
-#if __name__ == "__main__":
-    #root = init_gui()
-    #root.mainloop()
+if __name__ == "__main__":
+    root = main()
+    root.mainloop()
