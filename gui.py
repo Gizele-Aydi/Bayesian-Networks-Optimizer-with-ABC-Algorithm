@@ -1,4 +1,6 @@
 import tkinter as tk
+
+
 from tkinter import ttk, messagebox
 import matplotlib
 
@@ -33,6 +35,13 @@ DEFAULT_EVAP_RATE = 0.1
 # GA specific defaults
 DEFAULT_MUTATION = 0.2
 
+# Algorithm colors for comparison plots
+ALGORITHM_COLORS = {
+    "ABC": "blue",
+    "ACO": "red",
+    "GA": "green"
+}
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s: %(message)s')
 
 
@@ -49,6 +58,7 @@ class BN_Explorer:
         style.configure("TSpinbox", font=("Arial", 16))
         style.configure("TCombobox", font=("Arial", 16))
         style.configure("TRadiobutton", font=("Arial", 16))
+        style.configure("TCheckbutton", font=("Arial", 16))
 
         # Setup frames
         self.setup_frames()
@@ -66,8 +76,32 @@ class BN_Explorer:
         self.data = None
         self.variables = None
         self.score = None
-        self.best_edges_history = []
-        self.fitness_evolution = []
+
+        # Store results for all algorithms for comparison
+        self.algorithm_results = {
+            "ABC": {"fitness": [], "edges": []},
+            "ACO": {"fitness": [], "edges": []},
+            "GA": {"fitness": [], "edges": []}
+        }
+
+        # Currently selected algorithm for BN visualization
+        self.current_bn_algorithm = None
+
+    def reset_comparison(self):
+        """Reset all algorithm results"""
+        # Clear any existing animation
+        if self.anim is not None:
+            try:
+                self.anim.event_source.stop()
+            except:
+                pass
+            self.anim = None
+
+        self.algorithm_results = {
+            "ABC": {"fitness": [], "edges": []},
+            "ACO": {"fitness": [], "edges": []},
+            "GA": {"fitness": [], "edges": []}
+        }
 
     def setup_frames(self):
         # Main frames
@@ -89,6 +123,9 @@ class BN_Explorer:
         self.algorithm_var = tk.StringVar(value="ABC")
         self.iters_var = tk.IntVar(value=DEFAULT_ITERS)
         self.interval_var = tk.IntVar(value=DEFAULT_INTERVAL)
+
+        # Comparison option
+        self.compare_var = tk.BooleanVar(value=False)
 
         # ABC specific controls
         self.pop_var = tk.IntVar(value=DEFAULT_POP)
@@ -121,9 +158,17 @@ class BN_Explorer:
         ttk.Spinbox(self.control_frame, from_=100, to=2000, textvariable=self.interval_var,
                     width=10, font=("Arial", 16)).grid(row=2, column=1, padx=10, pady=4)
 
+        # Comparison checkbox
+        ttk.Checkbutton(self.control_frame, text="Compare All Algorithms",
+                        variable=self.compare_var).grid(row=3, column=1, sticky=tk.W, pady=4)
+
         # Run button
         run_btn = ttk.Button(self.control_frame, text="Run Algorithm", command=self.run_optimization)
-        run_btn.grid(row=3, column=0, columnspan=2, pady=15, sticky=tk.W)
+        run_btn.grid(row=4, column=0, columnspan=2, pady=15, sticky=tk.W)
+
+        # Reset button
+        reset_btn = ttk.Button(self.control_frame, text="Reset All", command=self.reset_comparison)
+        reset_btn.grid(row=4, column=1, pady=15, sticky=tk.E)
 
         # Initial algorithm parameters display
         self.update_algorithm_params()
@@ -195,6 +240,18 @@ class BN_Explorer:
             iterations = self.iters_var.get()
             interval = self.interval_var.get()
 
+            # Set current algorithm for BN visualization
+            self.current_bn_algorithm = algorithm
+
+            # Stop any existing animation
+            if self.anim is not None:
+                try:
+                    self.anim.event_source.stop()
+                except:
+                    # If animation doesn't exist or is already stopped, just continue
+                    pass
+                self.anim = None
+
             # Run the selected algorithm
             if algorithm == "ABC":
                 self.run_abc()
@@ -203,8 +260,15 @@ class BN_Explorer:
             elif algorithm == "GA":
                 self.run_ga()
 
-            # Setup animation
-            self.setup_animation(interval)
+            # Store results for comparison
+            self.algorithm_results[algorithm]["fitness"] = self.fitness_evolution
+            self.algorithm_results[algorithm]["edges"] = self.best_edges_history
+
+            # Setup animation based on comparison setting
+            if self.compare_var.get():
+                self.setup_comparison_animation(interval)
+            else:
+                self.setup_single_algorithm_animation(interval)
 
         except Exception as e:
             messagebox.showerror("Error", str(e))
@@ -327,10 +391,14 @@ class BN_Explorer:
 
         logging.info(f"GA completed with final score: {best_score}")
 
-    def setup_animation(self, interval):
+    def setup_single_algorithm_animation(self, interval):
         # Clear any existing animation
         if self.anim is not None:
-            self.anim.event_source.stop()
+            try:
+                self.anim.event_source.stop()
+            except:
+                pass
+            self.anim = None
 
         # Prepare fitness plot
         self.ax1.clear()
@@ -349,17 +417,21 @@ class BN_Explorer:
         G0.add_nodes_from(self.variables)
         pos = nx.spring_layout(G0, seed=DEFAULT_SEED)
 
+        algorithm = self.algorithm_var.get()
+        color = ALGORITHM_COLORS[algorithm]
+
         def update(frame):
             # Update fitness plot
             self.ax1.clear()
-            self.ax1.set_title(f"{self.algorithm_var.get()} Search: Best Fitness", fontsize=24)
+            self.ax1.set_title(f"{algorithm} Search: Best Fitness", fontsize=24)
             self.ax1.set_xlabel("Iteration", fontsize=18)
             self.ax1.set_ylabel("BIC Score", fontsize=18)
             self.ax1.grid(True)
 
             xs = list(range(frame + 1))
             ys = [-f for f in self.fitness_evolution[:frame + 1]]
-            self.ax1.plot(xs, ys, linewidth=3)
+            self.ax1.plot(xs, ys, linewidth=3, color=color, label=algorithm)
+            self.ax1.legend()
 
             # Update BN plot
             self.ax2.clear()
@@ -386,6 +458,185 @@ class BN_Explorer:
             interval=interval,
             repeat=False
         )
+
+        self.canvas1.draw()
+        self.canvas2.draw()
+
+    def setup_comparison_animation(self, interval):
+        """Setup animation for comparing multiple algorithms"""
+        # Check which algorithms have data
+        available_algorithms = [algo for algo in ["ABC", "ACO", "GA"]
+                                if len(self.algorithm_results[algo]["fitness"]) > 0]
+
+        if len(available_algorithms) == 0:
+            messagebox.showinfo("Comparison", "No algorithm data available")
+            return
+
+        if len(available_algorithms) == 1:
+            # If only one algorithm available, use standard animation
+            self.setup_single_algorithm_animation(interval)
+            return
+
+        # Clear any existing animation
+        if self.anim is not None:
+            try:
+                self.anim.event_source.stop()
+            except:
+                pass
+            self.anim = None
+
+        # Find max iterations across all algorithms
+        max_iterations = max([len(self.algorithm_results[algo]["fitness"])
+                              for algo in available_algorithms])
+
+        # Prepare fitness plot
+        self.ax1.clear()
+        self.ax1.set_title("Algorithm Comparison: Best Fitness", fontsize=24)
+        self.ax1.set_xlabel("Iteration", fontsize=18)
+        self.ax1.set_ylabel("BIC Score", fontsize=18)
+        self.ax1.grid(True)
+
+        # Prepare BN plot for current algorithm
+        self.ax2.clear()
+        self.ax2.set_title(f"Learned BN ({self.current_bn_algorithm})", fontsize=24)
+        self.ax2.axis('off')
+
+        # Setup initial graph layout
+        G0 = nx.DiGraph()
+        G0.add_nodes_from(self.variables)
+        pos = nx.spring_layout(G0, seed=DEFAULT_SEED)
+
+        # Lines for each algorithm
+        lines = {}
+        for algo in available_algorithms:
+            lines[algo], = self.ax1.plot([], [], linewidth=3, color=ALGORITHM_COLORS[algo], label=algo)
+
+        # Legend
+        self.ax1.legend()
+
+        def init():
+            for algo in available_algorithms:
+                lines[algo].set_data([], [])
+            return list(lines.values())
+
+        def update(frame):
+            # Update each line in the fitness plot
+            for algo in available_algorithms:
+                fitness_data = self.algorithm_results[algo]["fitness"]
+                if frame < len(fitness_data):
+                    xs = list(range(frame + 1))
+                    ys = [-f for f in fitness_data[:frame + 1]]
+                    lines[algo].set_data(xs, ys)
+
+            # Set limits based on all data
+            self.ax1.set_xlim(0, max_iterations)
+
+            # Find min and max Y values across all algorithms
+            all_fitness = []
+            for algo in available_algorithms:
+                fitness_data = self.algorithm_results[algo]["fitness"]
+                if fitness_data and frame < len(fitness_data):
+                    all_fitness.extend([-f for f in fitness_data[:frame + 1]])
+
+            if all_fitness:
+                self.ax1.set_ylim(min(all_fitness) * 1.1, max(all_fitness) * 0.9)
+
+            # Update BN plot for current algorithm
+            if self.current_bn_algorithm in available_algorithms:
+                edges_data = self.algorithm_results[self.current_bn_algorithm]["edges"]
+                if frame < len(edges_data):
+                    self.ax2.clear()
+                    self.ax2.set_title(f"Learned BN ({self.current_bn_algorithm} - Iteration {frame})", fontsize=24)
+                    self.ax2.axis('off')
+
+                    G = nx.DiGraph()
+                    G.add_nodes_from(self.variables)
+                    G.add_edges_from(edges_data[frame])
+
+                    nx.draw_networkx(
+                        G, pos, ax=self.ax2,
+                        node_size=3000, node_color='lightblue',
+                        arrowsize=20, font_size=16
+                    )
+
+            self.canvas1.draw()
+            self.canvas2.draw()
+            return list(lines.values())
+
+        # Create animation
+        self.anim = FuncAnimation(
+            self.fig1, update,
+            frames=max_iterations,
+            interval=interval,
+            init_func=init,
+            blit=True,
+            repeat=False
+        )
+
+        self.canvas1.draw()
+        self.canvas2.draw()
+
+    def update_bn_visualization(self, event=None):
+        """Update BN visualization based on selected algorithm"""
+        if self.variables is None:
+            return
+
+        selected_algo = self.bn_algorithm_var.get()
+
+        # If "Current" is selected, use the most recently run algorithm
+        if selected_algo == "Current":
+            selected_algo = self.current_bn_algorithm
+
+        # Check if algorithm has data
+        if selected_algo not in self.algorithm_results or not self.algorithm_results[selected_algo]["edges"]:
+            messagebox.showinfo("Visualization", f"No data available for {selected_algo}")
+            return
+
+        # Setup initial graph layout
+        G0 = nx.DiGraph()
+        G0.add_nodes_from(self.variables)
+        pos = nx.spring_layout(G0, seed=DEFAULT_SEED)
+
+        # Get the last iteration's BN
+        final_edges = self.algorithm_results[selected_algo]["edges"][-1]
+
+        # Update BN plot with final structure
+        self.ax2.clear()
+        self.ax2.set_title(f"Learned BN ({selected_algo} - Final Structure)", fontsize=24)
+        self.ax2.axis('off')
+
+        G = nx.DiGraph()
+        G.add_nodes_from(self.variables)
+        G.add_edges_from(final_edges)
+
+        nx.draw_networkx(
+            G, pos, ax=self.ax2,
+            node_size=3000, node_color='lightblue',
+            arrowsize=20, font_size=16
+        )
+
+        self.canvas2.draw()
+
+    def reset_comparison(self):
+        """Reset all algorithm results"""
+        self.algorithm_results = {
+            "ABC": {"fitness": [], "edges": []},
+            "ACO": {"fitness": [], "edges": []},
+            "GA": {"fitness": [], "edges": []}
+        }
+
+        messagebox.showinfo("Reset", "All algorithm comparison data has been reset")
+
+        # Clear plots
+        self.ax1.clear()
+        self.ax1.set_title("Algorithm Search: Best Fitness", fontsize=24)
+        self.ax1.set_xlabel("Iteration", fontsize=18)
+        self.ax1.set_ylabel("BIC Score", fontsize=18)
+        self.ax1.grid(True)
+
+        self.ax2.clear()
+        self.ax2.set_title("Learned Bayesian Network", fontsize=24)
+        self.ax2.axis('off')
 
         self.canvas1.draw()
         self.canvas2.draw()

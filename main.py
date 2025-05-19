@@ -1,3 +1,4 @@
+import tkinter as tk
 #from gui import init_gui
 
 #if __name__ == "__main__":
