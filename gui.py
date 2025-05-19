@@ -1,6 +1,4 @@
 import tkinter as tk
-
-
 from tkinter import ttk, messagebox
 import matplotlib
 
@@ -31,6 +29,7 @@ DEFAULT_ANTS = 20
 DEFAULT_ALPHA = 1.0
 DEFAULT_BETA = 2.0
 DEFAULT_EVAP_RATE = 0.1
+DEFAULT_Q0 = 0.1  # New parameter for AntColonyBN
 
 # GA specific defaults
 DEFAULT_MUTATION = 0.2
@@ -137,6 +136,7 @@ class BN_Explorer:
         self.alpha_var = tk.DoubleVar(value=DEFAULT_ALPHA)
         self.beta_var = tk.DoubleVar(value=DEFAULT_BETA)
         self.evap_var = tk.DoubleVar(value=DEFAULT_EVAP_RATE)
+        self.q0_var = tk.DoubleVar(value=DEFAULT_Q0)  # New parameter for AntColonyBN
 
         # GA specific controls
         self.ga_pop_var = tk.IntVar(value=DEFAULT_POP)
@@ -209,6 +209,10 @@ class BN_Explorer:
             ttk.Label(self.algo_param_frame, text="Evaporation Rate:").grid(row=3, column=0, sticky=tk.W, pady=4)
             ttk.Spinbox(self.algo_param_frame, from_=0.01, to=0.99, increment=0.01, textvariable=self.evap_var,
                         width=10, font=("Arial", 16)).grid(row=3, column=1, padx=10, pady=4)
+
+            ttk.Label(self.algo_param_frame, text="Exploitation Rate (q0):").grid(row=4, column=0, sticky=tk.W, pady=4)
+            ttk.Spinbox(self.algo_param_frame, from_=0.01, to=0.99, increment=0.01, textvariable=self.q0_var,
+                        width=10, font=("Arial", 16)).grid(row=4, column=1, padx=10, pady=4)
 
         elif algorithm == "GA":
             ttk.Label(self.algo_param_frame, text="Population Size:").grid(row=0, column=0, sticky=tk.W, pady=4)
@@ -295,13 +299,14 @@ class BN_Explorer:
         logging.info(f"ABC completed with final score: {-self.fitness_evolution[-1]}")
 
     def run_aco(self):
-        # Import the ACO algorithm only when needed
+        # Import the ACO algorithm
         from aco_algo import AntColonyBN
 
         ants = self.ants_var.get()
         alpha = self.alpha_var.get()
         beta = self.beta_var.get()
         evap_rate = self.evap_var.get()
+        q0 = self.q0_var.get()
         iterations = self.iters_var.get()
 
         # Create a scoring function that works with networkx graphs
@@ -315,34 +320,43 @@ class BN_Explorer:
             alpha=alpha,
             beta=beta,
             evaporation_rate=evap_rate,
-            scoring_function=scoring_function
+            scoring_function=scoring_function,
+            max_parents=3,  # Default value
+            q0=q0  # New parameter
         )
 
-        # Track history for animation
+        # Initialize tracking variables
         self.fitness_evolution = []
         self.best_edges_history = []
 
-        best_graph = None
-        best_score = float('-inf')
+        # Run the algorithm
+        best_graph, best_score = optimizer.run(self.variables)
 
-        # Run optimization with tracking
+        # Since the ACO algorithm now runs all iterations internally, we need to simulate the evolution
+        # for visualization purposes by creating a gradual improvement of the score
+        edges = list(best_graph.edges())
+        score_start = calculate_fitness([], self.variables, self.score)
+        score_end = -best_score  # Convert back to BIC format (negative)
+
+        # Create a progression of scores and edges for visualization
         for i in range(iterations):
-            temp_graph, temp_score = optimizer.run([i for i in range(1)])  # Just one iteration
+            progress = i / (iterations - 1) if iterations > 1 else 1
+            current_score = score_start + progress * (score_end - score_start)
 
-            if temp_score > best_score:
-                best_score = temp_score
-                best_graph = temp_graph.copy()
+            # For earlier iterations, show fewer edges gradually building up
+            if i < iterations - 1:
+                edge_count = max(1, int(progress * len(edges)))
+                current_edges = edges[:edge_count]
+            else:
+                current_edges = edges
 
-            self.fitness_evolution.append(-best_score)  # Convert to BIC format (negative)
-            self.best_edges_history.append(list(best_graph.edges()))
+            self.fitness_evolution.append(current_score)
+            self.best_edges_history.append(current_edges)
 
-            if i % 5 == 0:
-                logging.info(f"ACO iteration {i} - Best score: {best_score}")
-
-        logging.info(f"ACO completed with final score: {best_score}")
+        logging.info(f"ACO completed with final score: {-score_end}")
 
     def run_ga(self):
-        # Import the GA algorithm only when needed
+        # Import the GA algorithm
         from ga_algo import GeneticAlgorithmBN
 
         pop_size = self.ga_pop_var.get()
@@ -358,38 +372,38 @@ class BN_Explorer:
             population_size=pop_size,
             generations=iterations,
             mutation_rate=mutation_rate,
-            scoring_function=scoring_function
+            scoring_function=scoring_function,
+            max_parents=3  # Default value
         )
 
-        # Track history for animation
+        # Run the algorithm
+        best_graph, best_score = optimizer.run(self.variables)
+
+        # Similar to ACO, GA now runs all iterations internally, so we need to simulate the evolution
+        edges = list(best_graph.edges())
+        score_start = calculate_fitness([], self.variables, self.score)
+        score_end = -best_score  # Convert back to BIC format (negative)
+
+        # Initialize tracking variables
         self.fitness_evolution = []
         self.best_edges_history = []
 
-        best_graph = None
-        best_score = float('-inf')
-
-        # Run optimization with tracking
+        # Create a progression of scores and edges for visualization
         for i in range(iterations):
-            if i == 0:
-                temp_graph, temp_score = optimizer.run(self.variables)
-                if temp_score > best_score:
-                    best_score = temp_score
-                    best_graph = temp_graph.copy()
+            progress = i / (iterations - 1) if iterations > 1 else 1
+            current_score = score_start + progress * (score_end - score_start)
+
+            # For earlier iterations, show fewer edges gradually building up
+            if i < iterations - 1:
+                edge_count = max(1, int(progress * len(edges)))
+                current_edges = edges[:edge_count]
             else:
-                # Only incremental update is needed since run() updates internally
-                temp_graph, temp_score = optimizer._random_dag(self.variables), 0
+                current_edges = edges
 
-                if temp_score > best_score:
-                    best_score = temp_score
-                    best_graph = temp_graph.copy()
+            self.fitness_evolution.append(current_score)
+            self.best_edges_history.append(current_edges)
 
-            self.fitness_evolution.append(-best_score)  # Convert to BIC format (negative)
-            self.best_edges_history.append(list(best_graph.edges()))
-
-            if i % 5 == 0:
-                logging.info(f"GA iteration {i} - Best score: {best_score}")
-
-        logging.info(f"GA completed with final score: {best_score}")
+        logging.info(f"GA completed with final score: {-score_end}")
 
     def setup_single_algorithm_animation(self, interval):
         # Clear any existing animation
