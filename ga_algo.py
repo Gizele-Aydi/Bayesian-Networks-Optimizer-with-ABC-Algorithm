@@ -1,6 +1,8 @@
 import networkx as nx
 import random
 import copy
+import numpy as np
+
 
 class GeneticAlgorithmBN:
     def __init__(self, population_size, generations, mutation_rate, scoring_function):
@@ -44,15 +46,69 @@ class GeneticAlgorithmBN:
         population = [self._random_dag(nodes) for _ in range(self.population_size)]
         scores = [self.scoring_function(g) for g in population]
 
-        for _ in range(self.generations):
-            selected = random.choices(population, weights=scores, k=2)
-            child = self._crossover(selected[0], selected[1])
-            child = self._mutate(child)
+        best_graph = population[0]
+        best_score = scores[0]
 
-            worst_idx = scores.index(min(scores))
-            population[worst_idx] = child
-            scores[worst_idx] = self.scoring_function(child)
+        for gen in range(self.generations):
+            # Find the best score in the current population
+            for i, score in enumerate(scores):
+                if score > best_score:
+                    best_score = score
+                    best_graph = copy.deepcopy(population[i])
+
+            # Convert scores to selection probabilities (handling negative scores)
+            selection_weights = self._compute_selection_weights(scores)
+
+            # Create new population through selection, crossover, and mutation
+            new_population = []
+            new_scores = []
+
+            # Elitism: keep the best individual
+            best_idx = scores.index(max(scores))
+            new_population.append(copy.deepcopy(population[best_idx]))
+            new_scores.append(scores[best_idx])
+
+            # Fill the rest of the population
+            while len(new_population) < self.population_size:
+                if np.sum(selection_weights) <= 0:
+                    # If all weights are non-positive, select randomly
+                    parent_indices = random.sample(range(len(population)), 2)
+                else:
+                    # Select parents based on weights
+                    parent_indices = random.choices(
+                        range(len(population)),
+                        weights=selection_weights,
+                        k=2
+                    )
+
+                parent1 = population[parent_indices[0]]
+                parent2 = population[parent_indices[1]]
+
+                child = self._crossover(parent1, parent2)
+                child = self._mutate(child)
+
+                child_score = self.scoring_function(child)
+                new_population.append(child)
+                new_scores.append(child_score)
+
+            population = new_population
+            scores = new_scores
 
         best_idx = scores.index(max(scores))
         return population[best_idx], scores[best_idx]
 
+    def _compute_selection_weights(self, scores):
+        """Convert scores to non-negative weights for selection."""
+        min_score = min(scores)
+
+        # If all scores are negative, shift them to make the minimum score 1
+        if min_score <= 0:
+            adjusted_scores = [score - min_score + 1 for score in scores]
+        else:
+            adjusted_scores = scores.copy()
+
+        # Check if all scores are equal (would result in uniform selection)
+        if all(score == adjusted_scores[0] for score in adjusted_scores):
+            return [1] * len(adjusted_scores)
+
+        return adjusted_scores

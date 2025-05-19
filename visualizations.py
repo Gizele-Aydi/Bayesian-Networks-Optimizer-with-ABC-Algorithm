@@ -95,4 +95,3 @@ def animate_abc_and_bn(
     plt.show()
     return anim
 
-

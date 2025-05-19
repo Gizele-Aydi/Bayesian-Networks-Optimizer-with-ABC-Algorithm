@@ -28,6 +28,14 @@ class AntColonyBN:
                     graph.remove_edge(u, v)
         return graph
 
+    def _adjust_score(self, score):
+        """Convert score to a positive value for pheromone updates"""
+        # If score is negative, convert to positive (for BIC score which is typically negative)
+        if score < 0:
+            return abs(score)
+        # Ensure a minimum positive value
+        return max(1e-6, score)
+
     def run(self, nodes):
         pheromones = self._initialize_pheromones(nodes)
         best_graph = None
@@ -45,15 +53,22 @@ class AntColonyBN:
 
                 if score > best_score:
                     best_score = score
-                    best_graph = g
+                    best_graph = g.copy()  # Make a copy to avoid reference issues
 
+            # Evaporate pheromones on all edges
             for (u, v) in pheromones:
                 pheromones[(u, v)] *= (1 - self.evaporation_rate)
 
+            # Update pheromones based on solution quality
             for i in range(len(all_graphs)):
                 g = all_graphs[i]
                 score = all_scores[i]
-                for u, v in g.edges():
-                    pheromones[(u, v)] += score / 100
+                # Adjust score to ensure it's positive for pheromone updates
+                adjusted_score = self._adjust_score(score)
+
+                # Only add pheromones if the graph has edges
+                if g.number_of_edges() > 0:
+                    for u, v in g.edges():
+                        pheromones[(u, v)] += adjusted_score / 100
 
         return best_graph, best_score
