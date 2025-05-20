@@ -5,7 +5,7 @@ import random
 
 class AntColonyBN:
     def __init__(self, num_ants, iterations, alpha=1.0, beta=2.0, evaporation_rate=0.1,
-                 scoring_function=None, max_parents=3, q0=0.1):
+                 scoring_function=None, max_parents=3, max_children=None, q0=0.1):
         self.num_ants = num_ants
         self.iterations = iterations
         self.alpha = alpha  # Pheromone importance
@@ -13,6 +13,7 @@ class AntColonyBN:
         self.evaporation_rate = evaporation_rate
         self.scoring_function = scoring_function
         self.max_parents = max_parents  # Maximum parents per node
+        self.max_children = max_children  # Maximum children per node (None = unlimited)
         self.q0 = q0  # Probability of exploitation vs exploration
         self.stagnation_limit = 10
         self.stagnation_count = 0
@@ -40,6 +41,11 @@ class AntColonyBN:
                 # Check if adding this edge would create a cycle
                 test_graph = graph.copy()
                 test_graph.add_edge(source, target_node)
+
+                # Check if adding this edge would exceed max children for source
+                if self.max_children is not None and test_graph.out_degree(source) > self.max_children:
+                    continue
+
                 if nx.is_directed_acyclic_graph(test_graph):
                     valid_edges.append((source, target_node))
 
@@ -83,11 +89,17 @@ class AntColonyBN:
                 if random.random() < self.q0:
                     # Exploitation: select the edge with highest probability
                     if edge == max(probabilities, key=probabilities.get):
-                        graph.add_edge(*edge)
+                        # Check max_children constraint
+                        source, target = edge
+                        if self.max_children is None or graph.out_degree(source) < self.max_children:
+                            graph.add_edge(*edge)
                 else:
                     # Exploration: probabilistic selection based on pheromone
                     if random.random() < probabilities[edge]:
-                        graph.add_edge(*edge)
+                        # Check max_children constraint
+                        source, target = edge
+                        if self.max_children is None or graph.out_degree(source) < self.max_children:
+                            graph.add_edge(*edge)
 
                 # Stop if we've reached max parents
                 if graph.in_degree(target_node) >= self.max_parents:

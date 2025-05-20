@@ -15,7 +15,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s: %(mes
 
 
 class CandidateSolution:
-    #Represents a candidate Bayesian Network structure.
+    # Represents a candidate Bayesian Network structure.
     def __init__(self, edges, variables, score, fitness=None):
         self.edges = edges
         self.variables = variables
@@ -67,7 +67,9 @@ class ABC_BN:
             seed=42,
             adaptive_neighborhood=True,
             elite_count=3,
-            local_search_iters=5
+            local_search_iters=5,
+            max_parents=2,
+            max_children=2
     ):
         self.data = data
         self.variables = variables
@@ -81,6 +83,8 @@ class ABC_BN:
         self.adaptive_neighborhood = adaptive_neighborhood
         self.elite_count = elite_count
         self.local_search_iters = local_search_iters
+        self.max_parents = max_parents
+        self.max_children = max_children
 
         # Advanced parameters
         self.min_diversity = 0.3
@@ -250,7 +254,7 @@ class ABC_BN:
                 continue
 
             # Decide how many parents to add (constrained by max_parents)
-            max_possible = min(len(available_parents), 3)
+            max_possible = min(len(available_parents), self.max_parents)
             num_parents = min(max_possible, math.ceil(density * len(available_parents)))
 
             if num_parents > 0:
@@ -260,10 +264,29 @@ class ABC_BN:
                     edges.append((u, v))
 
         # Sometimes add extra edges with low probability
+        # But ensure we don't exceed max_children limit for any node
+        child_counts = {node: 0 for node in nodes}
+        for edge in edges:
+            parent, child = edge
+            child_counts[parent] = child_counts.get(parent, 0) + 1
+
         for i, u in enumerate(nodes):
+            # Only consider adding more children if current count is below max
+            if child_counts[u] >= self.max_children:
+                continue
+
             for v in nodes[i + 1:]:
-                if random.random() < density / 3:  # Lower probability for extra edges
+                # Check both parent and child constraints
+                parent_count = sum(1 for e in edges if e[1] == v)
+                if parent_count >= self.max_parents:
+                    continue
+
+                # Only add edge if we don't exceed max_children
+                if child_counts[u] < self.max_children and random.random() < density / 3:
                     edges.append((u, v))
+                    child_counts[u] += 1
+                    if child_counts[u] >= self.max_children:
+                        break
 
         return edges
 
@@ -271,6 +294,25 @@ class ABC_BN:
         """Apply multiple mutation operations to create a neighbor solution."""
         new_edges = edges.copy()
         num_operations = max(1, int(random.expovariate(1 / mutation_strength)))
+
+        # Create a function to check for parent and child constraints
+        def check_constraints(edge_list):
+            # Count parents for each node
+            parent_counts = {}
+            # Count children for each node
+            child_counts = {}
+
+            for parent, child in edge_list:
+                parent_counts[child] = parent_counts.get(child, 0) + 1
+                child_counts[parent] = child_counts.get(parent, 0) + 1
+
+            # Check if any node exceeds constraints
+            for node in self.variables:
+                if parent_counts.get(node, 0) > self.max_parents:
+                    return False
+                if child_counts.get(node, 0) > self.max_children:
+                    return False
+            return True
 
         for _ in range(num_operations):
             operation = random.choices(
@@ -280,12 +322,35 @@ class ABC_BN:
             )[0]
 
             if operation == 'add':
-                # Add a random edge
-                all_possible_edges = [(u, v) for u in self.variables for v in self.variables
-                                      if u != v and (u, v) not in new_edges]
+                # Add a random edge that respects constraints
+                all_possible_edges = []
+
+                # Count existing parents and children
+                parent_counts = {}
+                child_counts = {}
+                for parent, child in new_edges:
+                    parent_counts[child] = parent_counts.get(child, 0) + 1
+                    child_counts[parent] = child_counts.get(parent, 0) + 1
+
+                # Find edges that can be added without violating constraints
+                for u in self.variables:
+                    # Skip if this node already has max children
+                    if child_counts.get(u, 0) >= self.max_children:
+                        continue
+
+                    for v in self.variables:
+                        if u != v and (u, v) not in new_edges:
+                            # Skip if target node already has max parents
+                            if parent_counts.get(v, 0) >= self.max_parents:
+                                continue
+                            all_possible_edges.append((u, v))
+
                 if all_possible_edges:
                     new_edge = random.choice(all_possible_edges)
-                    new_edges.append(new_edge)
+                    temp_edges = new_edges + [new_edge]
+                    # Only add if it doesn't create a cycle
+                    if is_acyclic(temp_edges, self.variables):
+                        new_edges.append(new_edge)
 
             elif operation == 'remove' and new_edges:
                 # Remove a random edge
@@ -293,13 +358,20 @@ class ABC_BN:
                 new_edges.remove(edge_to_remove)
 
             elif operation == 'reverse' and new_edges:
-                # Reverse a random edge
+                # Reverse a random edge if it respects constraints
                 edge_to_reverse = random.choice(new_edges)
                 u, v = edge_to_reverse
-                new_edges.remove(edge_to_reverse)
+
+                # Calculate parent and child counts if we reverse this edge
+                temp_edges = [e for e in new_edges if e != edge_to_reverse]
                 reversed_edge = (v, u)
-                if reversed_edge not in new_edges:
-                    new_edges.append(reversed_edge)
+                temp_edges.append(reversed_edge)
+
+                # Only reverse if it maintains acyclicity and respects constraints
+                if is_acyclic(temp_edges, self.variables) and check_constraints(temp_edges):
+                    new_edges.remove(edge_to_reverse)
+                    if reversed_edge not in new_edges:
+                        new_edges.append(reversed_edge)
 
         return new_edges
 
@@ -334,8 +406,18 @@ class ABC_BN:
                 # Adopt some edges from partner
                 num_to_adopt = max(1, int(adopt_rate * len(diff_edges)))
                 edges_to_add = random.sample(list(diff_edges), min(num_to_adopt, len(diff_edges)))
+
+                # Verify constraints before adding each edge
                 for edge in edges_to_add:
-                    base_edges.append(edge)
+                    temp_edges = base_edges + [edge]
+                    if is_acyclic(temp_edges, self.variables) and not exceeds_parent_limit(temp_edges, self.variables):
+                        # Additional check for max_children constraint
+                        child_counts = {}
+                        for p, c in temp_edges:
+                            child_counts[p] = child_counts.get(p, 0) + 1
+
+                        if child_counts.get(edge[0], 0) <= self.max_children:
+                            base_edges.append(edge)
 
         # Apply mutations to create a neighbor
         return self.mutate_solution(base_edges, mutation_strength)
@@ -424,13 +506,40 @@ class ABC_BN:
         p1_rate = random.uniform(0.4, 0.6)
         p2_rate = random.uniform(0.4, 0.6)
 
+        # Track parent and child counts
+        parent_counts = {}
+        child_counts = {}
+        for parent, child in new_edges:
+            parent_counts[child] = parent_counts.get(child, 0) + 1
+            child_counts[parent] = child_counts.get(parent, 0) + 1
+
+        # Add edges from first parent while respecting constraints
         for edge in unique_edges1:
             if random.random() < p1_rate:
-                new_edges.append(edge)
+                parent, child = edge
+                # Skip if adding would violate constraints
+                if parent_counts.get(child, 0) >= self.max_parents:
+                    continue
+                if child_counts.get(parent, 0) >= self.max_children:
+                    continue
 
+                new_edges.append(edge)
+                parent_counts[child] = parent_counts.get(child, 0) + 1
+                child_counts[parent] = child_counts.get(parent, 0) + 1
+
+        # Add edges from second parent while respecting constraints
         for edge in unique_edges2:
             if random.random() < p2_rate:
+                parent, child = edge
+                # Skip if adding would violate constraints
+                if parent_counts.get(child, 0) >= self.max_parents:
+                    continue
+                if child_counts.get(parent, 0) >= self.max_children:
+                    continue
+
                 new_edges.append(edge)
+                parent_counts[child] = parent_counts.get(child, 0) + 1
+                child_counts[parent] = child_counts.get(parent, 0) + 1
 
         return new_edges
 
@@ -635,8 +744,6 @@ class ABC_BN:
 
             # Record history
             best_edges_history.append(list(global_best.edges))
-
-            # Log every 10 iterations
             if it % 10 == 0:
                 logging.info(
                     f"Iteration {it}: Best score: {best_score}, Avg score: {np.mean(fitness_values):.2f}, Diversity: {pop_diversity:.2f}")

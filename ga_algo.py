@@ -5,17 +5,18 @@ import copy
 
 
 class GeneticAlgorithmBN:
-    def __init__(self, population_size, generations, mutation_rate, scoring_function, max_parents=3):
+    def __init__(self, population_size, generations, mutation_rate, scoring_function, max_parents=3, max_children=None):
         self.population_size = population_size
         self.generations = generations
         self.mutation_rate = mutation_rate
         self.scoring_function = scoring_function
         self.max_parents = max_parents  # Max parents per node constraint
+        self.max_children = max_children  # Max children per node constraint (None = unlimited)
         self.stagnation_limit = 10  # Number of generations without improvement before taking action
         self.stagnation_count = 0
 
     def _random_dag(self, nodes):
-        """Generate a random DAG with constraints on parent count"""
+        """Generate a random DAG with constraints on parent count and children count"""
         G = nx.DiGraph()
         G.add_nodes_from(nodes)
 
@@ -28,17 +29,25 @@ class GeneticAlgorithmBN:
             # This guarantees acyclicity
             possible_children = node_order[i + 1:]
 
+            # Track number of children for current node
+            children_count = 0
+
             # Add some random edges
             for child in possible_children:
+                # Stop if we've reached the max children limit for this node
+                if self.max_children is not None and children_count >= self.max_children:
+                    break
+
                 if random.random() < 0.2:
                     # Check parent limit constraint before adding edge
                     if G.in_degree(child) < self.max_parents:
                         G.add_edge(node_order[i], child)
+                        children_count += 1
 
         return G
 
     def _is_valid_dag_with_constraints(self, graph):
-        """Check if graph is a valid DAG and satisfies parent limit constraint"""
+        """Check if graph is a valid DAG and satisfies both parent and children limit constraints"""
         if not nx.is_directed_acyclic_graph(graph):
             return False
 
@@ -47,10 +56,16 @@ class GeneticAlgorithmBN:
             if graph.in_degree(node) > self.max_parents:
                 return False
 
+        # Check max children constraint if specified
+        if self.max_children is not None:
+            for node in graph.nodes():
+                if graph.out_degree(node) > self.max_children:
+                    return False
+
         return True
 
     def _crossover(self, parent1, parent2):
-        """Improved crossover that ensures valid DAG creation"""
+        """Improved crossover that ensures valid DAG creation with both constraints"""
         # Start with a copy of parent1
         child = parent1.copy()
         edges_to_try = list(parent2.edges())
@@ -58,6 +73,10 @@ class GeneticAlgorithmBN:
 
         for u, v in edges_to_try:
             if not child.has_edge(u, v):
+                # Check max children constraint before attempting to add the edge
+                if self.max_children is not None and child.out_degree(u) >= self.max_children:
+                    continue
+
                 # Try to add the edge
                 child.add_edge(u, v)
 
@@ -68,7 +87,7 @@ class GeneticAlgorithmBN:
         return child
 
     def _mutate(self, graph):
-        """Enhanced mutation with multiple possible operations"""
+        """Enhanced mutation with multiple possible operations and respect for constraints"""
         if random.random() >= self.mutation_rate:
             return graph
 
@@ -86,6 +105,11 @@ class GeneticAlgorithmBN:
             while attempts < 10:  # Limit attempts to avoid infinite loops
                 u, v = random.sample(nodes, 2)
                 if not mutated.has_edge(u, v):
+                    # Check max children constraint before attempting to add
+                    if self.max_children is not None and mutated.out_degree(u) >= self.max_children:
+                        attempts += 1
+                        continue
+
                     mutated.add_edge(u, v)
                     if self._is_valid_dag_with_constraints(mutated):
                         return mutated
@@ -105,6 +129,14 @@ class GeneticAlgorithmBN:
                 edge = random.choice(list(mutated.edges()))
                 u, v = edge
                 mutated.remove_edge(u, v)
+
+                # Check max children constraint before attempting to reverse
+                if self.max_children is not None and mutated.out_degree(v) >= self.max_children:
+                    # Restore original edge and try another
+                    mutated.add_edge(u, v)
+                    attempts += 1
+                    continue
+
                 mutated.add_edge(v, u)
 
                 if self._is_valid_dag_with_constraints(mutated):
