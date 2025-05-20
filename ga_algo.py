@@ -1,3 +1,6 @@
+import logging
+import time
+
 import networkx as nx
 import numpy as np
 import random
@@ -180,10 +183,17 @@ class GeneticAlgorithmBN:
 
         return population
 
+    def _tournament_selection(self, population, scores, tournament_size=3):
+        """Tournament selection - more robust than weighted random selection"""
+        indices = random.sample(range(len(population)), min(tournament_size, len(population)))
+        winner_idx = max(indices, key=lambda i: scores[i])
+        return population[winner_idx]
+
     def run(self, nodes):
         # Initialize population with valid DAGs
         population = [self._random_dag(nodes) for _ in range(self.population_size)]
         scores = [self.scoring_function(g) for g in population]
+        start = time.time()
 
         # Keep track of the best solution found
         best_idx = max(range(len(scores)), key=lambda i: scores[i])
@@ -207,7 +217,7 @@ class GeneticAlgorithmBN:
             # Track progress for debugging
             if gen % 10 == 0:
                 avg_edges = np.mean([g.number_of_edges() for g in population])
-                print(f"Generation {gen}: Best score = {best_score}, Avg edges = {avg_edges:.1f}")
+                logging.info(f"Generation {gen}: Best score = {best_score}, Avg edges = {avg_edges:.1f}")
 
             # Calculate selection weights properly
             selection_weights = self._compute_selection_weights(scores)
@@ -234,7 +244,7 @@ class GeneticAlgorithmBN:
 
             # Handle stagnation by injecting diversity if needed
             if self.stagnation_count >= self.stagnation_limit:
-                print(f"Stagnation detected at generation {gen}, injecting diversity")
+                logging.info(f"Stagnation detected at generation {gen}, injecting diversity")
                 new_population = self._inject_diversity(new_population)
                 self.stagnation_count = 0
 
@@ -244,14 +254,12 @@ class GeneticAlgorithmBN:
 
             # Early stopping if no improvement for many generations
             if gen > 20 and self.stagnation_count > self.stagnation_limit * 2:
-                print(f"Early stopping at generation {gen} due to prolonged stagnation")
+                logging.info(f"Early stopping at generation {gen} due to prolonged stagnation")
                 break
 
+        elapsed = time.time() - start
+        logging.info(f"Best BIC Score: {-best_score}")
+        logging.info(f"Time taken: {elapsed:.2f} seconds")
         # Return the best solution found during the entire run
         return best_graph, best_score
 
-    def _tournament_selection(self, population, scores, tournament_size=3):
-        """Tournament selection - more robust than weighted random selection"""
-        indices = random.sample(range(len(population)), min(tournament_size, len(population)))
-        winner_idx = max(indices, key=lambda i: scores[i])
-        return population[winner_idx]

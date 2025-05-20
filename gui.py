@@ -17,17 +17,19 @@ matplotlib.use('TkAgg')
 DEFAULT_SEED = 42
 DEFAULT_DATASET = "asia.csv"
 DEFAULT_POP = 20
-DEFAULT_LIMIT = 50
+DEFAULT_LIMIT = 15
 DEFAULT_ITERS = 50
 DEFAULT_WORKERS = 4
 DEFAULT_INTERVAL = 500
+DEFAULT_MAX_PARENTS = 2
+DEFAULT_MAX_CHILDREN = 3
 
 # ACO specific defaults
 DEFAULT_ANTS = 20
 DEFAULT_ALPHA = 1.0
 DEFAULT_BETA = 2.0
 DEFAULT_EVAP_RATE = 0.1
-DEFAULT_Q0 = 0.1  # New parameter for AntColonyBN
+DEFAULT_Q0 = 0.1
 
 # GA specific defaults
 DEFAULT_MUTATION = 0.2
@@ -41,13 +43,12 @@ ALGORITHM_COLORS = {
 
 # Node colors for different algorithms
 NODE_COLORS = {
-    "ABC": "#8ecae6",  # Light blue
-    "ACO": "#ffb703",  # Orange
-    "GA": "#70e000"  # Green
+    "ABC": "#8ecae6",
+    "ACO": "#ffb703",
+    "GA": "#70e000"
 }
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s: %(message)s')
-
 
 class BN_Explorer:
     def __init__(self, root):
@@ -55,6 +56,28 @@ class BN_Explorer:
         self.root.title("Bayesian Network Structure Learning")
         self.root.geometry("1800x1000")
         self.root.configure(bg="#f8f9fa")  # Light background color for the entire app
+
+        # ABC specific controls
+        self.pop_var = tk.IntVar(value=DEFAULT_POP)
+        self.limit_var = tk.IntVar(value=DEFAULT_LIMIT)
+        self.workers_var = tk.IntVar(value=DEFAULT_WORKERS)
+        self.max_parents_var = tk.IntVar(value=DEFAULT_MAX_PARENTS)
+        self.max_children_var = tk.IntVar(value=DEFAULT_MAX_CHILDREN)
+
+        # ACO specific controls
+        self.ants_var = tk.IntVar(value=DEFAULT_ANTS)
+        self.alpha_var = tk.DoubleVar(value=DEFAULT_ALPHA)
+        self.beta_var = tk.DoubleVar(value=DEFAULT_BETA)
+        self.evap_var = tk.DoubleVar(value=DEFAULT_EVAP_RATE)
+        self.q0_var = tk.DoubleVar(value=DEFAULT_Q0)
+        self.aco_max_parents_var = tk.IntVar(value=DEFAULT_MAX_PARENTS)
+        self.aco_max_children_var = tk.IntVar(value=DEFAULT_MAX_CHILDREN)
+
+        # GA specific controls
+        self.ga_pop_var = tk.IntVar(value=DEFAULT_POP)
+        self.mutation_var = tk.DoubleVar(value=DEFAULT_MUTATION)
+        self.ga_max_parents_var = tk.IntVar(value=DEFAULT_MAX_PARENTS)
+        self.ga_max_children_var = tk.IntVar(value=DEFAULT_MAX_CHILDREN)
 
         # Style configuration
         self.setup_styles()
@@ -261,7 +284,7 @@ class BN_Explorer:
         algorithm = self.algorithm_var.get()
 
         if algorithm == "ABC":
-            ttk.Label(self.algo_param_frame, text="Population Size:", style="Header.TLabel").grid(row=0, column=0,
+            ttk.Label(self.algo_param_frame, text="Colony Size:", style="Header.TLabel").grid(row=0, column=0,
                                                                                                   sticky=tk.W, pady=10)
             ttk.Spinbox(self.algo_param_frame, from_=5, to=100, textvariable=self.pop_var,
                         width=15).grid(row=0, column=1, padx=15, pady=10)
@@ -271,10 +294,23 @@ class BN_Explorer:
             ttk.Spinbox(self.algo_param_frame, from_=10, to=200, textvariable=self.limit_var,
                         width=15).grid(row=1, column=1, padx=15, pady=10)
 
-            ttk.Label(self.algo_param_frame, text="Workers:", style="Header.TLabel").grid(row=2, column=0, sticky=tk.W,
+            ttk.Label(self.algo_param_frame, text="Employed Bees:", style="Header.TLabel").grid(row=2, column=0, sticky=tk.W,
                                                                                           pady=10)
             ttk.Spinbox(self.algo_param_frame, from_=1, to=16, textvariable=self.workers_var,
                         width=15).grid(row=2, column=1, padx=15, pady=10)
+            ttk.Label(self.algo_param_frame, text="Max Parents:", style="Header.TLabel").grid(row=3, column=0,
+                                                                                              sticky=tk.W, pady=10)
+            ttk.Spinbox(self.algo_param_frame, from_=1, to=5, textvariable=self.max_parents_var, width=15).grid(row=3,
+                                                                                                                column=1,
+                                                                                                                padx=15,
+                                                                                                                pady=10)
+
+            ttk.Label(self.algo_param_frame, text="Max Children:", style="Header.TLabel").grid(row=4, column=0,
+                                                                                               sticky=tk.W, pady=10)
+            ttk.Spinbox(self.algo_param_frame, from_=1, to=5, textvariable=self.max_children_var, width=15).grid(row=4,
+                                                                                                                 column=1,
+                                                                                                                 padx=15,
+                                                                                                                 pady=10)
 
         elif algorithm == "ACO":
             ttk.Label(self.algo_param_frame, text="Number of Ants:", style="Header.TLabel").grid(row=0, column=0,
@@ -303,6 +339,15 @@ class BN_Explorer:
                                                                                                          pady=10)
             ttk.Spinbox(self.algo_param_frame, from_=0.01, to=0.99, increment=0.01, textvariable=self.q0_var,
                         width=15).grid(row=4, column=1, padx=15, pady=10)
+            ttk.Label(self.algo_param_frame, text="Max Parents:", style="Header.TLabel").grid(row=5, column=0,
+                                                                                              sticky=tk.W, pady=10)
+            ttk.Spinbox(self.algo_param_frame, from_=1, to=5, textvariable=self.aco_max_parents_var, width=15).grid(
+                row=5, column=1, padx=15, pady=10)
+
+            ttk.Label(self.algo_param_frame, text="Max Children:", style="Header.TLabel").grid(row=6, column=0,
+                                                                                               sticky=tk.W, pady=10)
+            ttk.Spinbox(self.algo_param_frame, from_=1, to=5, textvariable=self.aco_max_children_var, width=15).grid(
+                row=6, column=1, padx=15, pady=10)
 
         elif algorithm == "GA":
             ttk.Label(self.algo_param_frame, text="Population Size:", style="Header.TLabel").grid(row=0, column=0,
@@ -314,6 +359,15 @@ class BN_Explorer:
                                                                                                 sticky=tk.W, pady=10)
             ttk.Spinbox(self.algo_param_frame, from_=0.01, to=0.99, increment=0.01, textvariable=self.mutation_var,
                         width=15).grid(row=1, column=1, padx=15, pady=10)
+            ttk.Label(self.algo_param_frame, text="Max Parents:", style="Header.TLabel").grid(row=2, column=0,
+                                                                                              sticky=tk.W, pady=10)
+            ttk.Spinbox(self.algo_param_frame, from_=1, to=5, textvariable=self.ga_max_parents_var, width=15).grid(
+                row=2, column=1, padx=15, pady=10)
+
+            ttk.Label(self.algo_param_frame, text="Max Children:", style="Header.TLabel").grid(row=3, column=0,
+                                                                                               sticky=tk.W, pady=10)
+            ttk.Spinbox(self.algo_param_frame, from_=1, to=5, textvariable=self.ga_max_children_var, width=15).grid(
+                row=3, column=1, padx=15, pady=10)
 
     def setup_plots(self):
         """Set up the plots for visualization"""
@@ -411,6 +465,8 @@ class BN_Explorer:
         limit = self.limit_var.get()
         workers = self.workers_var.get()
         iterations = self.iters_var.get()
+        max_parents = self.max_parents_var.get()
+        max_children = self.max_children_var.get()
 
         optimizer = ABC_BN(
             data=self.data,
@@ -420,14 +476,15 @@ class BN_Explorer:
             limit=limit,
             num_iters=iterations,
             num_workers=workers,
-            seed=DEFAULT_SEED
+            seed=DEFAULT_SEED,
+            max_parents=max_parents,
+            max_children=max_children
         )
 
         self.fitness_evolution, _, _, _, self.best_edges_history = optimizer.run()
         logging.info(f"ABC completed with final score: {-self.fitness_evolution[-1]}")
 
     def run_aco(self):
-        # Import the ACO algorithm
         from aco_algo import AntColonyBN
 
         ants = self.ants_var.get()
@@ -436,6 +493,8 @@ class BN_Explorer:
         evap_rate = self.evap_var.get()
         q0 = self.q0_var.get()
         iterations = self.iters_var.get()
+        max_parents = self.aco_max_parents_var.get()
+        max_children = self.aco_max_children_var.get()
 
         # Create a scoring function that works with networkx graphs
         def scoring_function(graph):
@@ -449,8 +508,9 @@ class BN_Explorer:
             beta=beta,
             evaporation_rate=evap_rate,
             scoring_function=scoring_function,
-            max_parents=3,  # Default value
-            q0=q0  # New parameter
+            max_parents=max_parents,
+            max_children=max_children,
+            q0=q0
         )
 
         # Initialize tracking variables
@@ -484,12 +544,13 @@ class BN_Explorer:
         logging.info(f"ACO completed with final score: {-score_end}")
 
     def run_ga(self):
-        # Import the GA algorithm
         from ga_algo import GeneticAlgorithmBN
 
         pop_size = self.ga_pop_var.get()
         mutation_rate = self.mutation_var.get()
         iterations = self.iters_var.get()
+        max_parents = self.ga_max_parents_var.get()
+        max_children = self.ga_max_children_var.get()
 
         # Create a scoring function that works with networkx graphs
         def scoring_function(graph):
@@ -501,7 +562,8 @@ class BN_Explorer:
             generations=iterations,
             mutation_rate=mutation_rate,
             scoring_function=scoring_function,
-            max_parents=3  # Default value
+            max_parents=max_parents,
+            max_children=max_children
         )
 
         # Run the algorithm

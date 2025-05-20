@@ -1,3 +1,6 @@
+import logging
+import time
+
 import networkx as nx
 import numpy as np
 import random
@@ -145,6 +148,8 @@ class AntColonyBN:
         """Run the ACO algorithm to find the best Bayesian Network structure"""
         pheromones = self._initialize_pheromones(nodes)
         heuristic = self._initialize_heuristic(nodes)
+        start = time.time()
+
 
         best_graph = None
         best_score = float('-inf')
@@ -210,7 +215,7 @@ class AntColonyBN:
 
             # Handle stagnation by adding random pheromones
             if self.stagnation_count >= self.stagnation_limit:
-                print(f"Stagnation detected at iteration {iteration}, adding random pheromones")
+                logging.info(f"Stagnation detected at iteration {iteration}, adding random pheromones")
                 for edge in random.sample(list(pheromones.keys()), len(pheromones) // 4):
                     pheromones[edge] += random.uniform(0.5, 1.0)
                 self.stagnation_count = 0
@@ -218,13 +223,16 @@ class AntColonyBN:
             # Status update every few iterations
             if iteration % 5 == 0:
                 avg_edges = np.mean([g.number_of_edges() for g in all_graphs])
-                print(f"Iteration {iteration}: Best score = {best_score}, Avg edges = {avg_edges:.1f}")
+                logging.info(f"Iteration {iteration}: Best score = {best_score}, Avg edges = {avg_edges:.1f}")
 
         # Ensure we have a valid result
         if best_graph is None or best_graph.number_of_edges() < self.min_edges:
-            print("Warning: No valid solution found, creating fallback solution")
+            logging.info("Warning: No valid solution found, creating fallback solution")
             best_graph = nx.DiGraph()
             best_graph.add_nodes_from(nodes)
             best_score = self.scoring_function(best_graph)
 
+        elapsed = time.time() - start
+        logging.info(f"Best BIC Score: {-best_score}")
+        logging.info(f"Time taken: {elapsed:.2f} seconds")
         return best_graph, best_score
